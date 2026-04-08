@@ -174,17 +174,17 @@ quadrant-4 低优先级
     id: 'requirement',
     label: 'Requirement（需求图）',
     code: `requirementDiagram
-requirement req_login {
-id: 1
-text: 用户需要完成登录
-risk: low
-verifymethod: test
-}
-element frontend {
-type: ui
-docRef: "登录页"
-}
-frontend - satisfies -> req_login`,
+    requirement req_login {
+        id: 1
+        text: the test text
+        risk: high
+        verifymethod: test
+    }
+    element frontend {
+        type: ui
+        docRef: "登录页"
+    }
+    frontend - satisfies -> req_login`,
   },
   {
     id: 'sankey',
@@ -593,18 +593,21 @@ function App() {
           <div className="editor-content">
             {source.trim().length === 0 ? (
               <div className="template-picker">
-                <div className="template-title">请选择 Mermaid 图表模板</div>
-                <select value={selectedTemplate} onChange={(event) => setSelectedTemplate(event.target.value)}>
+                <select
+                  value={selectedTemplate}
+                  onChange={(event) => {
+                    const templateId = event.target.value
+                    setSelectedTemplate(templateId)
+                    loadTemplate(templateId)
+                  }}
+                >
+                  <option value="">选择图表模板...</option>
                   {MERMAID_TEMPLATES.map((template) => (
                     <option key={template.id} value={template.id}>
                       {template.label}
                     </option>
                   ))}
                 </select>
-                <button type="button" onClick={() => loadTemplate(selectedTemplate)}>
-                  加载模板代码
-                </button>
-                <div className="template-hint">源码为空时显示模板下拉，选择后可一键生成默认代码。</div>
               </div>
             ) : null}
             <Editor
