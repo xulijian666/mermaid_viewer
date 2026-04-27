@@ -362,12 +362,103 @@ function App() {
   const [status, setStatus] = useState('就绪')
   const [selectedTemplate, setSelectedTemplate] = useState(MERMAID_TEMPLATES[0].id)
   const [dragging, setDragging] = useState(false)
+
+  // AI Assistant states
+  const [aiPanelOpen, setAiPanelOpen] = useState(false)
+  const [aiSettingsOpen, setAiSettingsOpen] = useState(false)
+  const [aiInput, setAiInput] = useState('')
+  const [aiOutput, setAiOutput] = useState('')
+  const [aiLoading, setAiLoading] = useState(false)
+  const [aiError, setAiError] = useState('')
+  const [aiSettings, setAiSettings] = useState({
+    apiUrl: 'https://api.openai.com/v1',
+    apiKey: '',
+    model: 'gpt-4o-mini',
+  })
+
   const dragRef = useRef({ x: 0, y: 0, originX: 0, originY: 0 })
   const canvasRef = useRef<HTMLDivElement>(null)
   const previewRef = useRef<HTMLDivElement>(null)
   const parseErrorRef = useRef<MermaidParseHash | null>(null)
   const baseSizeRef = useRef<{ width: number; height: number } | null>(null)
   const contentBoxRef = useRef<{ x: number; y: number; width: number; height: number } | null>(null)
+
+  const generateMermaid = async () => {
+    if (!aiInput.trim()) {
+      setAiError('请输入要生成图表的描述')
+      return
+    }
+    if (!aiSettings.apiKey.trim()) {
+      setAiError('请先在设置中配置 API Key')
+      setAiSettingsOpen(true)
+      return
+    }
+
+    setAiLoading(true)
+    setAiError('')
+    setAiOutput('')
+
+    const prompt = `请根据以下描述生成合法的 Mermaid 代码。只返回 Mermaid 代码，不要有其他解释或markdown标记。如果需要多行，只用一行，不要使用\\n转义。
+
+用户描述: ${aiInput}
+
+请直接返回 Mermaid 代码，例如:
+flowchart TD
+A[开始] --> B[结束]`
+
+    try {
+      const response = await fetch(`${aiSettings.apiUrl}/chat/completions`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${aiSettings.apiKey}`,
+        },
+        body: JSON.stringify({
+          model: aiSettings.model,
+          messages: [
+            {
+              role: 'user',
+              content: prompt,
+            },
+          ],
+          temperature: 0.7,
+        }),
+      })
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}))
+        throw new Error(errorData.error?.message || `API请求失败: ${response.status}`)
+      }
+
+      const data = await response.json()
+      const content = data.choices?.[0]?.message?.content || ''
+
+      // 提取Mermaid代码（去掉可能的markdown标记）
+      const mermaidCode = content
+        .replace(/^```mermaid\n?/gi, '')
+        .replace(/^```\n?/gi, '')
+        .replace(/```$/gi, '')
+        .trim()
+
+      if (!mermaidCode) {
+        throw new Error('未获取到有效的 Mermaid 代码')
+      }
+
+      setAiOutput(mermaidCode)
+    } catch (error) {
+      setAiError(error instanceof Error ? error.message : '生成失败，请稍后重试')
+    } finally {
+      setAiLoading(false)
+    }
+  }
+
+  const insertToEditor = () => {
+    if (aiOutput) {
+      setSource(aiOutput)
+      setAiPanelOpen(false)
+      setStatus('AI 生成的代码已插入编辑器')
+    }
+  }
 
   useEffect(() => {
     mermaid.initialize({
@@ -676,6 +767,87 @@ function App() {
           </div>
         </section>
       </main>
+
+      {/* AI Assistant Panel */}
+      <div className={`ai-panel ${aiPanelOpen ? 'open' : ''}`}>
+        <button
+          type="button"
+          className="ai-toggle-btn"
+          onClick={() => setAiPanelOpen(!aiPanelOpen)}
+          title="AI 助手"
+        >
+          🤖
+        </button>
+        {aiPanelOpen && (
+          <div className="ai-panel-content">
+            <div className="ai-panel-header">
+              <span>AI 助手</span>
+              <button
+                type="button"
+                className="ai-settings-btn"
+                onClick={() => setAiSettingsOpen(!aiSettingsOpen)}
+              >
+                ⚙️
+              </button>
+            </div>
+
+            {aiSettingsOpen && (
+              <div className="ai-settings">
+                <label>
+                  API 地址:
+                  <input
+                    type="text"
+                    value={aiSettings.apiUrl}
+                    onChange={(e) => setAiSettings({ ...aiSettings, apiUrl: e.target.value })}
+                    placeholder="https://api.openai.com/v1"
+                  />
+                </label>
+                <label>
+                  API Key:
+                  <input
+                    type="password"
+                    value={aiSettings.apiKey}
+                    onChange={(e) => setAiSettings({ ...aiSettings, apiKey: e.target.value })}
+                    placeholder="sk-xxx..."
+                  />
+                </label>
+                <label>
+                  模型:
+                  <input
+                    type="text"
+                    value={aiSettings.model}
+                    onChange={(e) => setAiSettings({ ...aiSettings, model: e.target.value })}
+                    placeholder="gpt-4o-mini"
+                  />
+                </label>
+              </div>
+            )}
+
+            <div className="ai-input-area">
+              <textarea
+                value={aiInput}
+                onChange={(e) => setAiInput(e.target.value)}
+                placeholder="描述你想要生成的图表，例如: 用户登录流程图"
+                rows={3}
+              />
+              <button type="button" onClick={generateMermaid} disabled={aiLoading}>
+                {aiLoading ? '生成中...' : '生成'}
+              </button>
+            </div>
+
+            {aiError && <div className="ai-error">{aiError}</div>}
+
+            {aiOutput && (
+              <div className="ai-output">
+                <pre>{aiOutput}</pre>
+                <button type="button" onClick={insertToEditor}>
+                  插入代码
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
     </div>
   )
 }
